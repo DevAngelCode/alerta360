@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import StatCard from "@/components/StatCard";
 import RequestsTable from "@/components/RequestsTable";
@@ -30,8 +30,7 @@ export default function Home() {
     setTimeout(() => setToast(null), 3500);
   };
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = async () => {
     try {
       const [dRes, aRes, eRes, rRes] = await Promise.all([
         fetch("/api/dashboard"),
@@ -51,9 +50,34 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const [dRes, aRes, eRes, rRes] = await Promise.all([
+          fetch("/api/dashboard"),
+          fetch("/api/alertas"),
+          fetch("/api/empresas"),
+          fetch("/api/responsables"),
+        ]);
+        const [d, a, e, r] = await Promise.all([dRes.json(), aRes.json(), eRes.json(), rRes.json()]);
+        if (!active) return;
+        if (!d.ok) throw new Error(d.error || "Error al cargar dashboard.");
+        if (!a.ok) throw new Error(a.error || "Error al cargar alertas.");
+        setDash(d.data);
+        setAlertas(a.data);
+        if (e.ok) setEmpresas(e.data);
+        if (r.ok) setResponsables(r.data);
+      } catch (e) {
+        if (active) notify(e.message, "error");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
 
   const stats = useMemo(() => {
     if (!dash) return defaultStats;
@@ -73,7 +97,8 @@ export default function Home() {
       if (!json.ok) throw new Error(json.error || "Error al registrar.");
       notify("Solicitud registrada correctamente.");
       setShowForm(false);
-      load();
+      setLoading(true);
+      await load();
     } catch (e) {
       notify(e.message, "error");
     }

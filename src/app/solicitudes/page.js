@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import RequestsTable from "@/components/RequestsTable";
 import SolicitudForm from "@/components/SolicitudForm";
 import Toast from "@/components/Toast";
@@ -24,40 +24,64 @@ export default function SolicitudesPage() {
     setTimeout(() => setToast(null), 3500);
   };
 
-  const loadAll = useCallback(async (opts = {}) => {
+  const fetchSolicitudes = async (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.q) params.set("q", filters.q);
+    if (filters.empresa_id) params.set("empresa_id", filters.empresa_id);
+    if (filters.estado) params.set("estado", filters.estado);
+    if (filters.prioridad) params.set("prioridad", filters.prioridad);
+    const res = await fetch(`/api/solicitudes?${params.toString()}`);
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || "Error al cargar solicitudes.");
+    return json.data;
+  };
+
+  const loadRefs = async () => {
+    const [eRes, rRes] = await Promise.all([fetch("/api/empresas"), fetch("/api/responsables")]);
+    const [eJson, rJson] = await Promise.all([eRes.json(), rRes.json()]);
+    if (eJson.ok) setEmpresas(eJson.data);
+    if (rJson.ok) setResponsables(rJson.data);
+  };
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const [s, eRes, rRes] = await Promise.all([
+          fetchSolicitudes({}),
+          fetch("/api/empresas"),
+          fetch("/api/responsables"),
+        ]);
+        const [eJson, rJson] = await Promise.all([eRes.json(), rRes.json()]);
+        if (!active) return;
+        setSolicitudes(s);
+        if (eJson.ok) setEmpresas(eJson.data);
+        if (rJson.ok) setResponsables(rJson.data);
+      } catch (e) {
+        if (active) notify(e.message, "error");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const applyFilters = async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      const q = opts.q ?? search;
-      const fe = opts.empresa ?? filterEmpresa;
-      const fs = opts.estado ?? filterEstado;
-      const fp = opts.prioridad ?? filterPrioridad;
-      if (q) params.set("q", q);
-      if (fe) params.set("empresa_id", fe);
-      if (fs) params.set("estado", fs);
-      if (fp) params.set("prioridad", fp);
-      const [sRes, eRes, rRes] = await Promise.all([
-        fetch(`/api/solicitudes?${params.toString()}`),
-        fetch("/api/empresas"),
-        fetch("/api/responsables"),
-      ]);
-      const [sJson, eJson, rJson] = await Promise.all([sRes.json(), eRes.json(), rRes.json()]);
-      if (!sJson.ok) throw new Error(sJson.error || "Error al cargar solicitudes.");
-      if (!eJson.ok) throw new Error(eJson.error || "Error al cargar empresas.");
-      if (!rJson.ok) throw new Error(rJson.error || "Error al cargar responsables.");
-      setSolicitudes(sJson.data);
-      setEmpresas(eJson.data);
-      setResponsables(rJson.data);
+      const s = await fetchSolicitudes({ q: search, empresa_id: filterEmpresa, estado: filterEstado, prioridad: filterPrioridad });
+      setSolicitudes(s);
     } catch (e) {
       notify(e.message, "error");
     } finally {
       setLoading(false);
     }
-  }, [search, filterEmpresa, filterEstado, filterPrioridad]);
+  };
 
-  useEffect(() => { loadAll(); }, []); // initial
-
-  const applyFilters = () => loadAll({ q: search, empresa: filterEmpresa, estado: filterEstado, prioridad: filterPrioridad });
+  const reloadCurrent = async () => {
+    const s = await fetchSolicitudes({ q: search, empresa_id: filterEmpresa, estado: filterEstado, prioridad: filterPrioridad });
+    setSolicitudes(s);
+  };
 
   const handleSave = async (data) => {
     try {
@@ -69,9 +93,12 @@ export default function SolicitudesPage() {
       notify(editing ? "Solicitud actualizada correctamente." : "Solicitud registrada correctamente.");
       setShowForm(false);
       setEditing(null);
-      loadAll({ q: search, empresa: filterEmpresa, estado: filterEstado, prioridad: filterPrioridad });
+      setLoading(true);
+      await reloadCurrent();
     } catch (e) {
       notify(e.message, "error");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -82,9 +109,12 @@ export default function SolicitudesPage() {
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "Error al eliminar.");
       notify("Solicitud eliminada correctamente.");
-      loadAll({ q: search, empresa: filterEmpresa, estado: filterEstado, prioridad: filterPrioridad });
+      setLoading(true);
+      await reloadCurrent();
     } catch (e) {
       notify(e.message, "error");
+    } finally {
+      setLoading(false);
     }
   };
 

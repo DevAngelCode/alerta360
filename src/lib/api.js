@@ -1,6 +1,4 @@
-import { NextResponse } from "next/json";
-
-export const runtimeNode = "nodejs";
+import { NextResponse } from "next/server";
 
 export function ok(data, status = 200) {
   return NextResponse.json({ ok: true, data }, { status });

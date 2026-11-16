@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import AlertsPanel from "@/components/AlertsPanel";
 
 export default function AlertasPage() {
@@ -8,22 +8,24 @@ export default function AlertasPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/alertas");
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Error al cargar alertas.");
-      setData(json.data);
-      setError(null);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/alertas");
+        const json = await res.json();
+        if (!active) return;
+        if (!json.ok) throw new Error(json.error || "Error al cargar alertas.");
+        setData(json.data);
+        setError(null);
+      } catch (e) {
+        if (active) setError(e.message);
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
   }, []);
-
-  useEffect(() => { load(); }, [load]);
 
   return (
     <div className="space-y-6">

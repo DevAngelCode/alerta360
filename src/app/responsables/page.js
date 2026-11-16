@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import Toast from "@/components/Toast";
 
 const empty = { nombre: "", correo: "", empresa_id: "" };
@@ -20,8 +20,7 @@ export default function ResponsablesPage() {
     setTimeout(() => setToast(null), 3500);
   };
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = async () => {
     try {
       const [rRes, eRes] = await Promise.all([fetch("/api/responsables"), fetch("/api/empresas")]);
       const rJson = await rRes.json();
@@ -35,9 +34,28 @@ export default function ResponsablesPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const [rRes, eRes] = await Promise.all([fetch("/api/responsables"), fetch("/api/empresas")]);
+        const rJson = await rRes.json();
+        const eJson = await eRes.json();
+        if (!active) return;
+        if (!rJson.ok) throw new Error(rJson.error || "Error al cargar responsables.");
+        if (!eJson.ok) throw new Error(eJson.error || "Error al cargar empresas.");
+        setItems(rJson.data);
+        setEmpresas(eJson.data);
+      } catch (e) {
+        if (active) notify(e.message, "error");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
 
   const openNew = () => { setEditing(null); setForm(empty); setErrors({}); setShowForm(true); };
   const openEdit = (r) => { setEditing(r); setForm({ nombre: r.nombre || "", correo: r.correo || "", empresa_id: r.empresa_id ? String(r.empresa_id) : "" }); setErrors({}); setShowForm(true); };
@@ -64,7 +82,8 @@ export default function ResponsablesPage() {
       if (!json.ok) throw new Error(json.error || "Error al guardar.");
       notify(editing ? "Responsable actualizado correctamente." : "Responsable registrado correctamente.");
       setShowForm(false);
-      load();
+      setLoading(true);
+      await load();
     } catch (e) {
       notify(e.message, "error");
     }
@@ -77,7 +96,8 @@ export default function ResponsablesPage() {
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "Error al eliminar.");
       notify("Responsable eliminado.");
-      load();
+      setLoading(true);
+      await load();
     } catch (e) {
       notify(e.message, "error");
     }
@@ -155,4 +175,21 @@ export default function ResponsablesPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700">Empresa</label>
-                <select value={form.empresa_id} onChange={(e) => setForm({ ...form, empresa_id: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:o
+                <select value={form.empresa_id} onChange={(e) => setForm({ ...form, empresa_id: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+                  <option value="">Seleccionar</option>
+                  {empresas.map((emp) => <option key={emp.id} value={emp.id}>{emp.nombre}</option>)}
+                </select>
+                {errors.empresa_id && <p className="mt-1 text-xs text-red-600">{errors.empresa_id}</p>}
+              </div>
+              <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">
+                <button type="button" onClick={() => setShowForm(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancelar</button>
+                <button type="submit" className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Guardar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+    </div>
+  );
+}

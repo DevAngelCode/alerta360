@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import Toast from "@/components/Toast";
 
 const empty = { nombre: "", ruc: "" };
@@ -19,8 +19,7 @@ export default function EmpresasPage() {
     setTimeout(() => setToast(null), 3500);
   };
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = async () => {
     try {
       const res = await fetch("/api/empresas");
       const json = await res.json();
@@ -31,9 +30,25 @@ export default function EmpresasPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/empresas");
+        const json = await res.json();
+        if (!active) return;
+        if (!json.ok) throw new Error(json.error || "Error al cargar empresas.");
+        setEmpresas(json.data);
+      } catch (e) {
+        if (active) notify(e.message, "error");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
 
   const openNew = () => { setEditing(null); setForm(empty); setErrors({}); setShowForm(true); };
   const openEdit = (e) => { setEditing(e); setForm({ nombre: e.nombre || "", ruc: e.ruc || "" }); setErrors({}); setShowForm(true); };
@@ -57,7 +72,8 @@ export default function EmpresasPage() {
       if (!json.ok) throw new Error(json.error || "Error al guardar.");
       notify(editing ? "Empresa actualizada correctamente." : "Empresa registrada correctamente.");
       setShowForm(false);
-      load();
+      setLoading(true);
+      await load();
     } catch (e) {
       notify(e.message, "error");
     }
@@ -70,7 +86,8 @@ export default function EmpresasPage() {
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "Error al eliminar.");
       notify("Empresa eliminada.");
-      load();
+      setLoading(true);
+      await load();
     } catch (e) {
       notify(e.message, "error");
     }
